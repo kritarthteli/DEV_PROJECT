@@ -1,4 +1,4 @@
-﻿import os
+import os
 import re
 import glob
 import numpy as np
@@ -97,7 +97,7 @@ st.markdown(
     }
     div[data-testid="stMetricValue"] {
         font-family: 'JetBrains Mono', monospace !important;
-        font-size: 1.65rem !important;
+        font-size: 1.12rem !important;
         font-weight: 700 !important;
         color: #F8FAFC !important;
     }
@@ -140,7 +140,96 @@ st.markdown(
         border-radius: 12px;
         overflow: hidden;
     }
-    </style>
+    
+section[data-testid="stSidebarContent"],
+div[data-testid="stSidebarUserContent"] {
+    padding-top: 0.75rem !important;
+    padding-bottom: 0.5rem !important;
+    overflow-y: visible !important;
+}
+section[data-testid="stSidebar"] [data-testid="stVerticalBlock"] {
+    gap: 0.45rem !important;
+}
+section[data-testid="stSidebar"] h2,
+section[data-testid="stSidebar"] h3 {
+    margin-top: 0.1rem !important;
+    margin-bottom: 0.15rem !important;
+    font-size: 1.12rem !important;
+}
+section[data-testid="stSidebar"] div[data-baseweb="select"] div {
+    max-height: none !important;
+    height: auto !important;
+    overflow: visible !important;
+}
+section[data-testid="stSidebar"] .stMultiSelect [data-baseweb="tag"] {
+    margin: 2px 3px 2px 0 !important;
+    padding: 1px 6px !important;
+    height: auto !important;
+    font-size: 0.75rem !important;
+}
+
+section[data-testid="stSidebar"] [data-stale="true"] {
+    display: none !important;
+    opacity: 0 !important;
+    transition: none !important;
+}
+
+[data-testid="stVerticalBlockBorderWrapper"],
+[data-testid="stVerticalBlockBorderWrapper"] > div,
+[data-testid="stElementContainer"],
+[data-testid="stPlotlyChart"],
+.stPlotlyChart,
+.js-plotly-plot,
+.plot-container,
+.svg-container {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    overflow-x: visible !important;
+    overflow-y: visible !important;
+}
+
+.stMarkdown code, [data-testid="stMarkdownContainer"] code {
+    color: inherit !important;
+    background: transparent !important;
+    padding: 0 !important;
+    font-family: inherit !important;
+    font-size: inherit !important;
+}
+/* KPI_FIT_START */
+div[data-testid="stMetric"] {
+    padding: 0.85rem 0.85rem !important;
+    overflow: hidden !important;
+}
+div[data-testid="stMetricLabel"],
+div[data-testid="stMetricLabel"] > div,
+div[data-testid="stMetricLabel"] p,
+div[data-testid="stMetricLabel"] label {
+    font-size: 0.78rem !important;
+    white-space: nowrap !important;
+    overflow: visible !important;
+    text-overflow: unset !important;
+    line-height: 1.25 !important;
+}
+div[data-testid="stMetricValue"],
+div[data-testid="stMetricValue"] > div,
+div[data-testid="stMetricValue"] * {
+    font-size: 1.12rem !important;
+    white-space: nowrap !important;
+    overflow: visible !important;
+    text-overflow: unset !important;
+    line-height: 1.25 !important;
+}
+div[data-testid="stMetricDelta"],
+div[data-testid="stMetricDelta"] > div {
+    font-size: 0.73rem !important;
+    white-space: nowrap !important;
+    overflow: visible !important;
+    text-overflow: unset !important;
+    line-height: 1.25 !important;
+}
+/* KPI_FIT_END */
+</style>
     """,
     unsafe_allow_html=True,
 )
@@ -229,6 +318,7 @@ def load_india_ndap_data():
     return macro_df, None
 
 
+@st.cache_data(show_spinner=False)
 def _read_plfs_all_sheets(path: str):
     """Scans all sheets in an e-Sankhyiki XLSX/CSV file to locate the data table."""
     ext = os.path.splitext(path)[1].lower()
@@ -331,7 +421,7 @@ def load_india_plfs_data():
         df["Pandemic_Phase"] = np.select(
             [df["Year"] <= 2019, df["Year"].isin([2020, 2021])],
             ["Pre-Pandemic (2018–2019)", "Pandemic Shock (2020–2021)"],
-            default="Post-Pandemic Recovery (2022–2026)",
+            default="Post-Pandemic (2022?2026)",
         )
         df["Period"] = df["Year"].astype(str) + " (" + df["Quarter"] + ")"
         df["Short_Indicator"] = df["Indicator"].apply(lambda s: s.split("(")[0].strip())
@@ -438,6 +528,12 @@ bls_df, bls_files = load_us_bls_data()
 # ==============================================================================
 # INDIA-FIRST GLOBAL SIDEBAR FILTERS
 # ==============================================================================
+if "active_tab" not in st.session_state:
+    st.session_state.active_tab = 0
+
+_cur_tab = st.session_state.active_tab
+
+# 1. Persistent Sidebar Logo / Branding (always visible)
 st.sidebar.markdown(
     """
     <div style="margin-top: -2.65rem; padding-right: 2.4rem; margin-bottom: 0.95rem;">
@@ -453,77 +549,87 @@ st.sidebar.markdown(
     unsafe_allow_html=True,
 )
 
-st.sidebar.header("India Workforce & IT Hub Filters")
-st.sidebar.caption("Primary focus: Indian states, youth talent & post-COVID IT hiring.")
+# 2. Tab-Specific Sidebar Controls (atomic swap via st.sidebar.empty() prevents rerun ghosting)
+with st.sidebar.container(key=f"sb_tab_panel_{_cur_tab}"):
+    if _cur_tab in (0, 1):
+        st.header("India Workforce & IT Hub Filters")
+        st.caption("Primary focus: Indian states, youth talent & post-COVID IT hiring.")
 
-if plfs_df is not None:
-    india_states = sorted(plfs_df["State"].unique())
-    default_state_idx = india_states.index("Karnataka") if "Karnataka" in india_states else (
-        india_states.index("All India") if "All India" in india_states else 0
-    )
-    sel_india_state = st.sidebar.selectbox(
-        "📍 Primary Indian State / IT Hub",
-        options=india_states,
-        index=default_state_idx,
-    )
+        if plfs_df is not None:
+            india_states = sorted(plfs_df["State"].unique())
+            default_state_idx = india_states.index("Karnataka") if "Karnataka" in india_states else (
+                india_states.index("All India") if "All India" in india_states else 0
+            )
+            sel_india_state = st.selectbox(
+                "📍 Primary Indian State / IT Hub",
+                options=india_states,
+                index=default_state_idx, key='sb_widget_1')
 
-    available_hubs = [h for h in MAJOR_INDIAN_IT_HUBS if h in india_states]
-    sel_compare_states = st.sidebar.multiselect(
-        "🏙️ Compare Indian IT Hub States",
-        options=india_states,
-        default=available_hubs[:7] if len(available_hubs) >= 7 else available_hubs,
-    )
+            available_hubs = [h for h in MAJOR_INDIAN_IT_HUBS if h in india_states]
+            sel_compare_states = st.multiselect(
+                "🏙️ Compare Indian IT Hub States",
+                options=india_states,
+                default=available_hubs[:7] if len(available_hubs) >= 7 else available_hubs, key='sb_widget_2')
 
-    genders_list = sorted(plfs_df["Gender"].unique())
-    sel_india_gender = st.sidebar.selectbox(
-        "👤 Gender Segment",
-        options=genders_list,
-        index=genders_list.index("person") if "person" in genders_list else 0,
-    )
+            genders_list = sorted(plfs_df["Gender"].unique())
+            sel_india_gender = st.selectbox(
+                "👤 Gender Segment",
+                options=genders_list,
+                index=genders_list.index("person") if "person" in genders_list else 0, key='sb_widget_3')
 
-    ages_list = sorted(plfs_df["Agegroup"].unique())
-    sel_india_age = st.sidebar.selectbox(
-        "🎓 Workforce Age Cohort",
-        options=ages_list,
-        index=ages_list.index("15 years and above") if "15 years and above" in ages_list else 0,
-        help="Switch to '15-29 years' to isolate young graduates & entry-level tech talent.",
-    )
-else:
-    sel_india_state = "Karnataka"
-    sel_compare_states = MAJOR_INDIAN_IT_HUBS[:6]
-    sel_india_gender = "person"
-    sel_india_age = "15 years and above"
+            ages_list = sorted(plfs_df["Agegroup"].unique())
+            sel_india_age = st.selectbox(
+                "🎓 Workforce Age Cohort",
+                options=ages_list,
+                index=ages_list.index("15 years and above") if "15 years and above" in ages_list else 0,
+                help="Switch to '15-29 years' to isolate young graduates & entry-level tech talent.", key='sb_widget_4')
+        else:
+            sel_india_state = "Karnataka"
+            sel_compare_states = MAJOR_INDIAN_IT_HUBS[:6]
+            sel_india_gender = "person"
+            sel_india_age = "15 years and above"
+        st.session_state["_saved_india_state"] = sel_india_state
+    else:
+        sel_india_state = st.session_state.get("_saved_india_state", "All India")
 
-st.sidebar.divider()
-st.sidebar.header("🌐 Global Tech Role Benchmark Filters")
-st.sidebar.caption("International role & AI wage reference (US BLS 2019–2025).")
+    if _cur_tab == 2:
+        st.header("🌐 Global Tech Role Benchmark Filters")
+        st.caption("International role & AI wage reference (US BLS 2019–2025).")
 
-if bls_df is not None:
-    all_families = sorted(bls_df["Role_Family"].unique())
-    sel_families = st.sidebar.multiselect(
-        "💻 Tech Role Family",
-        options=all_families,
-        default=all_families,
-    )
+        if bls_df is not None:
+            all_families = sorted(bls_df["Role_Family"].unique())
+            sel_families = st.multiselect(
+                "💻 Tech Role Family",
+                options=all_families,
+                default=all_families, key='sb_widget_5')
 
-    all_phases = sorted(bls_df["Pandemic_Phase"].unique())
-    sel_phases = st.sidebar.multiselect(
-        "📅 Global Pandemic Phase",
-        options=all_phases,
-        default=all_phases,
-    )
+            all_phases = sorted(bls_df["Pandemic_Phase"].unique())
+            sel_phases = st.multiselect(
+                "📅 Global Pandemic Phase",
+                options=all_phases,
+                default=all_phases, key='sb_widget_6')
 
-    bls_filtered = bls_df[
-        (bls_df["Role_Family"].isin(sel_families))
-        & (bls_df["Pandemic_Phase"].isin(sel_phases))
-    ].copy()
-else:
-    bls_filtered = None
+            bls_filtered = bls_df[
+                (bls_df["Role_Family"].isin(sel_families))
+                & (bls_df["Pandemic_Phase"].isin(sel_phases))
+            ].copy()
+        else:
+            bls_filtered = None
 
 
-# ==============================================================================
-# HEADER & DATA PIPELINE STATUS BAR
-# ==============================================================================
+        # ==============================================================================
+        # HEADER & DATA PIPELINE STATUS BAR
+        # ==============================================================================
+        st.session_state["_saved_bls_filtered"] = bls_filtered
+    else:
+        bls_filtered = st.session_state.get("_saved_bls_filtered", bls_df.copy())
+
+    if _cur_tab == 3:
+        st.header("Compensation Benchmark")
+        st.caption("Use the **Employer Track**, **Role**, **Experience**, and **City** selectors in the main panel to calibrate CTC & take-home estimates.")
+
+
+# 3. Persistent Top Hero Banner (always visible above tabs)
 st.markdown(
     """
     <div class="hero-card">
@@ -539,46 +645,30 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-status_c1, status_c2, status_c3 = st.columns(3)
-with status_c1:
-    if ndap_macro is not None:
-        st.success(f"**NITI Aayog NDAP (2018–2022):** {len(ndap_macro)} IT macro rows")
-    else:
-        st.error("**NITI Aayog NDAP:** Missing `data/ndap_*.csv`")
-
-with status_c2:
-    if plfs_df is not None:
-        inds = ", ".join(sorted(plfs_df["Short_Indicator"].unique()))
-        st.success(f"**MoSPI PLFS ({inds}):** {len(plfs_df):,} quarterly rows")
-    else:
-        st.warning("**MoSPI PLFS:** Check `LFPR_173.xlsx` / `UR_175.xlsx` / `WPR_174.xlsx`")
-
-with status_c3:
-    if bls_df is not None:
-        years_str = ", ".join(map(str, sorted(bls_df["Release_Year"].unique())))
-        st.info(f"🌐 **Global Role Context (US BLS {years_str}):** {len(bls_df):,} tech rows")
-    else:
-        st.warning("🌐 **Global Role Context:** No `state_M*.xlsx` detected")
-
-st.divider()
-
-
-# ==============================================================================
-# MAIN TABS (INDIA-FIRST ORDERING — ZERO SYNTHETIC DATA)
-# ==============================================================================
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "India Before vs. After Shift",
-    "🏙️ Indian IT Hubs & Workforce Deep-Dive",
-    "🌐 Global Tech Roles & AI Shift (2019–2025)",
-    "💰 'Know Your Worth' Global + INR Benchmark",
-    "🧹 Behind the Data & Govt Audit",
-])
+_tab_labels = [
+    "Overview & India Macro",
+    "Indian IT Hubs & Workforce",
+    "Global Tech & AI Roles",
+    "Compensation Benchmark"
+]
+_nav_cols = st.columns(4, gap="small")
+for _i, (_col, _lbl) in enumerate(zip(_nav_cols, _tab_labels)):
+    with _col:
+        if st.button(
+            _lbl,
+            key=f"nav_tab_{_i}",
+            use_container_width=True,
+            type="primary" if st.session_state.active_tab == _i else "secondary",
+        ):
+            st.session_state.active_tab = _i
+            st.rerun()
+st.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
 
 
 # ------------------------------------------------------------------------------
 # TAB 1: INDIA BEFORE VS. AFTER PANDEMIC (PRIMARY EXECUTIVE VIEW)
 # ------------------------------------------------------------------------------
-with tab1:
+if st.session_state.active_tab == 0:
     st.subheader(f"Before vs. After Pandemic: India Tech & Labour Trajectory ({sel_india_state})")
 
     k1, k2, k3, k4 = st.columns(4)
@@ -601,7 +691,7 @@ with tab1:
         k2.metric(
             "India IT Net Annual Hiring",
             f"{int(post_it['IT_Net_Hiring_Addition']):,}",
-            f"+{hiring_surge_pct:.1f}% vs FY{int(pre_it['Year_Num'])}",
+            f"{hiring_surge_pct:+.1f}% vs FY{int(pre_it['Year_Num'])}",
         )
 
     # KPI 3: Selected Indian State Post-COVID Employment Rate (PLFS WPR or UR)
@@ -660,8 +750,16 @@ with tab1:
                     "Post-Pandemic Digital Boom (FY21+)": "#FF9933",
                 },
             )
-            fig_it.update_layout(height=410, legend_title_text="")
-            st.plotly_chart(fig_it, use_container_width=True)
+            fig_it.update_layout(legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0, title=None, font=dict(size=11)), height=410, legend_title_text="")
+            fig_it.update_traces(textangle=0, textposition="outside", cliponaxis=False, textfont=dict(size=11, color="#e2e8f0"))
+            fig_it.update_xaxes(type="category", tickangle=0, tickfont=dict(size=11))
+            fig_it.update_yaxes(range=[0, 525000])
+            fig_it.update_layout(margin=dict(l=16, r=40, t=68, b=48), autosize=True)
+            fig_it.update_xaxes(type="category", automargin=True, tickangle=0, tickfont=dict(size=10.5))
+            fig_it.update_layout(width=None, autosize=True)
+            fig_it.update_xaxes(automargin=True)
+            fig_it.update_yaxes(automargin=True)
+            st.plotly_chart(fig_it, use_container_width=True, config={"displayModeBar": False, "responsive": True})
 
     with c_right:
         st.markdown(f"#### {sel_india_state}: Urban Employment & Unemployment Shift (PLFS)")
@@ -684,14 +782,13 @@ with tab1:
                     barmode="group",
                     text_auto=".1f",
                     labels={"Short_Indicator": "MoSPI PLFS Indicator", "Value": "Average Rate (%)"},
-                    color_discrete_map={
-                        "Pre-Pandemic (2018–2019)": "#64748B",
-                        "Pandemic Shock (2020–2021)": "#EF4444",
-                        "Post-Pandemic Recovery (2022–2026)": "#138808",
-                    },
+                    color_discrete_map={"Pre-Pandemic (2018?2019)": "#64748b", "Pre-Pandemic (2018-2019)": "#64748b", "Pandemic Shock (2020?2021)": "#ef4444", "Pandemic Shock (2020-2021)": "#ef4444", "Post-Pandemic Recovery (2022?2026)": "#10b981", "Post-Pandemic Recovery (2022-2026)": "#10b981"},
                 )
-                fig_state_phase.update_layout(height=410, legend_title_text="")
-                st.plotly_chart(fig_state_phase, use_container_width=True)
+                fig_state_phase.update_layout(legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0, title=None, font=dict(size=11)), height=410, legend_title_text="")
+                fig_state_phase.update_layout(width=None, autosize=True)
+                fig_state_phase.update_xaxes(automargin=True)
+                fig_state_phase.update_yaxes(automargin=True)
+                st.plotly_chart(fig_state_phase, use_container_width=True, config={"displayModeBar": False, "responsive": True})
             else:
                 st.info("No PLFS rows for this exact Gender/Age filter.")
 
@@ -722,20 +819,26 @@ with tab1:
                 barmode="group",
                 text_auto=".1f",
                 labels={"State": "Indian State / IT Hub", "Value": f"Mean {hub_metric} (%)"},
-                color_discrete_map={
-                    "Pre-Pandemic (2018–2019)": "#64748B",
-                    "Pandemic Shock (2020–2021)": "#EF4444",
-                    "Post-Pandemic Recovery (2022–2026)": "#138808",
-                },
+                color_discrete_map={"Pre-Pandemic (2018?2019)": "#64748b", "Pre-Pandemic (2018-2019)": "#64748b", "Pandemic Shock (2020?2021)": "#ef4444", "Pandemic Shock (2020-2021)": "#ef4444", "Post-Pandemic Recovery (2022?2026)": "#10b981", "Post-Pandemic Recovery (2022-2026)": "#10b981"},
             )
-            fig_hubs.update_layout(height=420, legend_title_text="")
-            st.plotly_chart(fig_hubs, use_container_width=True)
+            fig_hubs.update_layout(legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0, title=None, font=dict(size=11)), height=420, legend_title_text="")
+            fig_hubs.update_layout(width=None, autosize=True)
+            fig_hubs.update_xaxes(automargin=True)
+            fig_hubs.update_yaxes(automargin=True)
+            st.plotly_chart(fig_hubs, use_container_width=True, config={"displayModeBar": False, "responsive": True})
 
 
 # ------------------------------------------------------------------------------
 # TAB 2: INDIAN IT HUBS & WORKFORCE DEEP-DIVE (PLFS + NDAP)
 # ------------------------------------------------------------------------------
-with tab2:
+    st.markdown("#### Cross-Market Synthesis: Connecting India Macro & Global Role Shifts")
+    st.info(
+        "**1. Legacy Services Contraction:** The **-54.1% drop** in US *Computer Programmers* (201k to 92k) mirrors the slowdown in traditional Indian IT services bench hiring.\n\n"
+        "**2. AI & Security Surge Fuels GCCs:** Post-pandemic expansion in *Data Scientists*, *Information Security Analysts (+51.4%)*, and *Software Developers & QA* drives Global Capability Center (GCC) hiring across Bengaluru, Hyderabad, and Pune.\n\n"
+        "**3. Macro Recovery vs. Skill Bifurcation:** While MoSPI PLFS shows steady post-2022 employment recovery across Indian IT states, wage growth is concentrated in specialized AI, cloud, and product engineering tracks."
+    )
+
+elif st.session_state.active_tab == 1:
     st.subheader(f"🏙️ Indian Workforce & State Deep-Dive — {sel_india_state}")
 
     if plfs_df is not None:
@@ -757,14 +860,13 @@ with tab2:
                 markers=True,
                 title=f"{ind_choice} — {sel_india_state} ({sel_india_gender}, {sel_india_age})",
                 labels={"Period": "Quarter", "Value": "Percentage (%)"},
-                color_discrete_map={
-                    "Pre-Pandemic (2018–2019)": "#64748B",
-                    "Pandemic Shock (2020–2021)": "#EF4444",
-                    "Post-Pandemic Recovery (2022–2026)": "#138808",
-                },
+                color_discrete_map={"Pre-Pandemic (2018?2019)": "#64748b", "Pre-Pandemic (2018-2019)": "#64748b", "Pandemic Shock (2020?2021)": "#ef4444", "Pandemic Shock (2020-2021)": "#ef4444", "Post-Pandemic Recovery (2022?2026)": "#10b981", "Post-Pandemic Recovery (2022-2026)": "#10b981"},
             )
             fig_plfs.update_layout(height=410, xaxis_tickangle=-45)
-            st.plotly_chart(fig_plfs, use_container_width=True)
+            fig_plfs.update_layout(width=None, autosize=True)
+            fig_plfs.update_xaxes(automargin=True)
+            fig_plfs.update_yaxes(automargin=True)
+            st.plotly_chart(fig_plfs, use_container_width=True, config={"displayModeBar": False, "responsive": True})
 
             # Youth (15-29) vs Overall (15+) Comparison for the same Indian State
             youth_comp = plfs_df[
@@ -785,7 +887,10 @@ with tab2:
                     labels={"Period": "Quarter", "Value": "Percentage (%)"},
                 )
                 fig_youth.update_layout(height=370, xaxis_tickangle=-45)
-                st.plotly_chart(fig_youth, use_container_width=True)
+                fig_youth.update_layout(width=None, autosize=True)
+                fig_youth.update_xaxes(automargin=True)
+                fig_youth.update_yaxes(automargin=True)
+                st.plotly_chart(fig_youth, use_container_width=True, config={"displayModeBar": False, "responsive": True})
 
     st.markdown("---")
     if ndap_macro is not None and ndap_demo is not None:
@@ -806,7 +911,10 @@ with tab2:
                 yaxis_title="Job-Seekers (Millions)",
                 height=390,
             )
-            st.plotly_chart(fig_reg, use_container_width=True)
+            fig_reg.update_layout(width=None, autosize=True)
+            fig_reg.update_xaxes(automargin=True)
+            fig_reg.update_yaxes(automargin=True)
+            st.plotly_chart(fig_reg, use_container_width=True, config={"displayModeBar": False, "responsive": True})
 
         with c_nd2:
             st.markdown("#### 4. Workforce Inclusion & Demographic Breakdown")
@@ -820,17 +928,20 @@ with tab2:
                 labels={"Year_Num": "Year", "Live_Register_Count": "Live Register Count"},
             )
             fig_demo.update_layout(height=350)
-            st.plotly_chart(fig_demo, use_container_width=True)
+            fig_demo.update_layout(width=None, autosize=True)
+            fig_demo.update_xaxes(automargin=True)
+            fig_demo.update_yaxes(automargin=True)
+            st.plotly_chart(fig_demo, use_container_width=True, config={"displayModeBar": False, "responsive": True})
 
 
 # ------------------------------------------------------------------------------
 # TAB 3: GLOBAL TECH ROLES & AI SHIFT (INTERNATIONAL BENCHMARK)
 # ------------------------------------------------------------------------------
-with tab3:
-    st.subheader("🌐 International Tech Role & AI Wage Shift (2019 vs. 2021 vs. 2025)")
+elif st.session_state.active_tab == 2:
+    st.subheader("International Tech Role & AI Wage Shift (2019 vs. 2021 vs. 2025)")
     st.caption(
         "Because Indian MoSPI PLFS quarterly tables measure employment rates rather than role-specific AI salaries, "
-        "official US BLS Computer & Mathematical (`15-0000`) data provides the international role-level compensation benchmark."
+        "official US BLS Computer & Mathematical (15-0000) data provides the international role-level compensation benchmark."
     )
 
     if bls_filtered is None or bls_filtered.empty:
@@ -854,7 +965,14 @@ with tab3:
                 labels={"Role_Family": "Tech Role Family", "Mean_Salary": "Mean Annual Pay (USD)"},
             )
             fig_fam.update_layout(height=420, xaxis_tickangle=-25)
-            st.plotly_chart(fig_fam, use_container_width=True)
+            fig_fam.update_layout(
+                legend=dict(orientation='h', yanchor='bottom', y=1.03, xanchor='right', x=0.96, title_text='Year: '),
+                margin=dict(t=85, r=65)
+            )
+            fig_fam.update_layout(width=None, autosize=True)
+            fig_fam.update_xaxes(automargin=True)
+            fig_fam.update_yaxes(automargin=True)
+            st.plotly_chart(fig_fam, use_container_width=True, config={"displayModeBar": False, "responsive": True})
 
             y_start, y_end = int(available_years[0]), int(available_years[-1])
             st.markdown(f"#### Before vs. After Pandemic Role Growth (`{y_start}` vs. `{y_end}`)")
@@ -867,30 +985,145 @@ with tab3:
             comp = df_start.merge(df_end, on="Role_Family", how="inner")
             comp["Employment_Growth_%"] = ((comp["Emp_After"] - comp["Emp_Before"]) / comp["Emp_Before"]) * 100
             comp["Salary_Growth_%"] = ((comp["Pay_After"] - comp["Pay_Before"]) / comp["Pay_Before"]) * 100
-            st.dataframe(comp.round(1).sort_values("Salary_Growth_%", ascending=False), use_container_width=True)
-
-        selected_year = st.selectbox("Inspect Role Composition for Release Year", available_years, index=len(available_years) - 1)
-        year_df = bls_filtered[bls_filtered["Release_Year"] == selected_year]
-        tree_df = (
-            year_df.groupby(["Role_Family", "OCC_TITLE"], as_index=False)["TOT_EMP"]
-            .sum()
-            .dropna(subset=["TOT_EMP"])
+            _g_df = comp.copy()
+            _cat_col = next((c for c in _g_df.columns if any(k in str(c).lower() for k in ['role', 'title', 'occupation', 'family'])), _g_df.columns[0])
+            _emp_cols = [c for c in _g_df.columns if 'emp' in str(c).lower() and '%' not in str(c)]
+            if len(_emp_cols) >= 2:
+                _c19 = next((c for c in _emp_cols if '2019' in str(c) or 'pre' in str(c).lower()), _emp_cols[0])
+                _c25 = next((c for c in _emp_cols if c != _c19), _emp_cols[1])
+                _metric_lbl = 'Total Employment (Headcount)'
+                _is_currency = False
+            else:
+                _pay_cols = [c for c in _g_df.columns if any(k in str(c).lower() for k in ['pay', 'wage', 'salary']) and '%' not in str(c)]
+                _c19 = next((c for c in _pay_cols if '2019' in str(c) or 'pre' in str(c).lower()), _pay_cols[0])
+                _c25 = next((c for c in _pay_cols if c != _c19), _pay_cols[1])
+                _metric_lbl = 'Mean Annual Pay (USD)'
+                _is_currency = True
+            for _c in [_c19, _c25]:
+                _g_df[_c + '_num'] = pd.to_numeric(_g_df[_c].astype(str).str.replace(r'[^0-9.\-]', '', regex=True), errors='coerce')
+            _g_df = _g_df.dropna(subset=[_c19 + '_num', _c25 + '_num']).sort_values(_c25 + '_num', ascending=True)
+            _long = pd.concat([
+                pd.DataFrame({'Role': _g_df[_cat_col], 'Period': '2019 (Pre-COVID)', 'Value': _g_df[_c19 + '_num']}),
+                pd.DataFrame({'Role': _g_df[_cat_col], 'Period': '2025 (Post-COVID AI Era)', 'Value': _g_df[_c25 + '_num']})
+            ], ignore_index=True)
+            _long['Label'] = _long['Value'].map(lambda v: f'${v/1000:,.0f}k' if _is_currency else (f'{v/1e6:.2f}M' if v >= 1e6 else f'{v/1000:,.0f}k'))
+            _fig_growth = px.bar(
+                _long,
+                x='Value',
+                y='Role',
+                color='Period',
+                barmode='group',
+                orientation='h',
+                text='Label',
+                color_discrete_map={'2019 (Pre-COVID)': '#64748b', '2025 (Post-COVID AI Era)': '#38bdf8'},
+                labels={'Value': _metric_lbl, 'Role': '', 'Period': ''}
+            )
+            _fig_growth.update_traces(textposition='outside', cliponaxis=False, textfont=dict(size=10.5, color='#cbd5e1'))
+            _max_v = _long['Value'].max()
+            _fig_growth.update_layout(
+                template='plotly_dark',
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(15,23,42,0.45)',
+                height=max(560, len(_g_df) * 42),
+                bargap=0.22,
+                bargroupgap=0.08,
+                margin=dict(l=15, r=65, t=55, b=40),
+                legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='left', x=0),
+                xaxis=dict(range=[0, _max_v * 1.15], showgrid=True, gridcolor='rgba(148,163,184,0.12)'),
+                yaxis=dict(showgrid=False, tickfont=dict(size=12))
+            )
+            _fig_growth.update_layout(width=None, autosize=True)
+            _fig_growth.update_xaxes(automargin=True)
+            _fig_growth.update_yaxes(automargin=True)
+            st.plotly_chart(_fig_growth, use_container_width=True, config={"displayModeBar": False, "responsive": True})
+# 2. Full-width Horizontal Grouped Bar Chart: Top 8 Specific Roles Headcount (2019 vs. 2021 vs. 2025)
+        
+        _short_names = {
+        
+            'Software Developers and Software Quality Assurance Analysts and Testers': 'Software Developers & QA',
+        
+            'Software Developers': 'Software Developers & QA',
+        
+            'Software Quality Assurance Analysts and Testers': 'Software Developers & QA',
+        
+            'Network and Computer Systems Administrators': 'Network & Systems Administrators',
+        
+            'Computer User Support Specialists': 'Computer User Support',
+        
+            'Computer Occupations, All Other': 'Other Specialized Tech Roles',
+        
+        }
+        
+        _occ_3yr = bls_filtered.copy()
+        
+        _occ_3yr['Role_Short'] = _occ_3yr['OCC_TITLE'].replace(_short_names)
+        
+        _occ_3yr = _occ_3yr.groupby(['Release_Year', 'Role_Short'], as_index=False)['TOT_EMP'].sum().dropna(subset=['TOT_EMP'])
+        
+        _occ_3yr = _occ_3yr[_occ_3yr['TOT_EMP'] > 0].copy()
+        
+        _top_occs = _occ_3yr.groupby('Role_Short')['TOT_EMP'].max().nlargest(8).index.tolist()
+        
+        _occ_3yr = _occ_3yr[_occ_3yr['Role_Short'].isin(_top_occs)].copy()
+        
+        _order_occs = _occ_3yr.groupby('Role_Short')['TOT_EMP'].max().sort_values(ascending=True).index.tolist()
+        
+        _occ_3yr['Year_Str'] = _occ_3yr['Release_Year'].astype(str)
+        
+        _occ_3yr['Lbl'] = _occ_3yr['TOT_EMP'].map(lambda v: f'{v/1e6:.2f}M' if v >= 1e6 else f'{v/1e3:,.0f}k')
+        
+        _fig_3yr = px.bar(
+        
+            _occ_3yr, x='TOT_EMP', y='Role_Short', color='Year_Str', barmode='group', orientation='h', text='Lbl',
+        
+            category_orders={'Role_Short': _order_occs, 'Year_Str': ['2025', '2021', '2019']},
+        
+            color_discrete_map={'2019': '#64748b', '2021': '#818cf8', '2025': '#38bdf8'},
+        
+            labels={'TOT_EMP': 'Total Employment (Headcount)', 'Role_Short': '', 'Year_Str': ''}
+        
         )
-        tree_df = tree_df[tree_df["TOT_EMP"] > 0]
-        fig_tree = px.treemap(
-            tree_df,
-            path=["Role_Family", "OCC_TITLE"],
-            values="TOT_EMP",
-            title=f"Global Tech Workforce Composition Treemap ({selected_year})",
+        
+        # Keep legend ordered chronologically (2019 -> 2021 -> 2025) while bars stack 2019 at top to 2025 at bottom
+        
+        _fig_3yr.update_traces(textposition='outside', cliponaxis=False, textfont=dict(size=10.5, color='#cbd5e1'))
+        
+        st.markdown('##### Top 8 Specific Tech Roles Headcount (2019 vs. 2021 vs. 2025)')
+        
+        _fig_3yr.update_layout(
+        
+            title=None,
+        
+            template='plotly_dark', paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(15,23,42,0.45)',
+        
+            height=540, bargap=0.22, bargroupgap=0.06, margin=dict(l=15, r=105, t=45, b=45),
+        
+            legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='left', x=0, traceorder='reversed', font=dict(size=12)),
+        
+            xaxis=dict(range=[0, _occ_3yr['TOT_EMP'].max() * 1.24], showgrid=True, gridcolor='rgba(148,163,184,0.12)'),
+        
+            yaxis=dict(showgrid=False, tickfont=dict(size=12))
+        
         )
-        fig_tree.update_layout(height=430)
-        st.plotly_chart(fig_tree, use_container_width=True)
+        
+        _fig_3yr.update_layout(width=None, autosize=True)
+        _fig_3yr.update_xaxes(automargin=True)
+        _fig_3yr.update_yaxes(automargin=True)
+        st.plotly_chart(_fig_3yr, use_container_width=True, config={"displayModeBar": False, "responsive": True})
+        
+        st.caption(
+        
+            "**Methodology & Inflation Notes:** (1) *BLS SOC Reclassification:* Dedicated code 15-2051 (Data Scientists) was disaggregated after 2019, and pre-2021 *Software Developers & QA* (15-1256) is unified with post-2021 15-1252 + 15-1253 for continuity. "
+        
+            "(2) *Nominal vs. Real Pay:* Salaries are nominal USD; adjusting for ~23.5% cumulative US CPI inflation (2019?2025), roles with <24% nominal pay growth saw flat real purchasing power."
+        
+        )
 
 
 # ------------------------------------------------------------------------------
 # TAB 4: 'KNOW YOUR WORTH' INDIA & GLOBAL COMPENSATION BENCHMARK
 # ------------------------------------------------------------------------------
-with tab4:
+elif st.session_state.active_tab == 3:
     st.subheader("💰 'Know Your Worth' India & Global Tech Compensation Estimator")
     st.markdown(
         "Estimates **actual Indian market CTC (₹ LPA)** and **monthly in-hand take-home pay** across Indian IT hubs "
@@ -987,18 +1220,18 @@ with tab4:
         f"+{est_india_lpa - pre_covid_lpa:.1f} LPA vs Pre-COVID (2019)",
     )
     m2.metric(
-        "💵 Expected Offer Band (25th–75th)",
+        "Offer Band (25th–75th)",
         f"₹{low_band_lpa:.1f} – ₹{high_band_lpa:.1f} LPA",
         "Annual Total CTC",
     )
     m3.metric(
-        "🏦 Est. Monthly In-Hand Pay",
-        f"₹{est_monthly_inhand:,} / mo",
+        "Est. Monthly In-Hand Pay",
+        f"₹{est_monthly_inhand:,}/mo",
         "After PF & New Tax Regime",
     )
     m4.metric(
-        "🇺🇸 US BLS Role Median (2025)",
-        f"${us_role_median:,.0f} / yr" if pd.notna(us_role_median) else "N/A",
+        "US BLS Role Median (2025)",
+        f"${us_role_median:,.0f}/yr" if pd.notna(us_role_median) else "N/A",
         f"India/US Ratio: {(est_india_lpa * 1e5) / (us_role_median * 92.73):.2f}x" if pd.notna(us_role_median) else None,
     )
 
@@ -1029,7 +1262,10 @@ with tab4:
             color_continuous_scale="Oranges",
         )
         fig_tracks.update_layout(height=360, showlegend=False, coloraxis_showscale=False)
-        st.plotly_chart(fig_tracks, use_container_width=True)
+        fig_tracks.update_layout(width=None, autosize=True)
+        fig_tracks.update_xaxes(automargin=True)
+        fig_tracks.update_yaxes(automargin=True)
+        st.plotly_chart(fig_tracks, use_container_width=True, config={"displayModeBar": False, "responsive": True})
 
     with c_chart2:
         city_rows = [
@@ -1051,40 +1287,77 @@ with tab4:
             color_continuous_scale="Greens",
         )
         fig_cities.update_layout(height=360, showlegend=False, coloraxis_showscale=False)
-        st.plotly_chart(fig_cities, use_container_width=True)
+        fig_cities.update_layout(width=None, autosize=True)
+        fig_cities.update_xaxes(automargin=True)
+        fig_cities.update_yaxes(automargin=True)
+        st.plotly_chart(fig_cities, use_container_width=True, config={"displayModeBar": False, "responsive": True})
 
 
 # ------------------------------------------------------------------------------
 # TAB 5: DATA ENGINEERING & GOVT SOURCE AUDIT
 # ------------------------------------------------------------------------------
-with tab5:
-    st.subheader("🧹 Real-World Government Data Engineering & Normalization Audit")
+
+st.markdown("<div style='border-top: 1px solid rgba(148,163,184,0.14); margin-top: 2rem; margin-bottom: 0.55rem;'></div>", unsafe_allow_html=True)
+st.markdown("<div style='font-size: 0.72rem; letter-spacing: 0.06em; color: #94a3b8; font-weight: 600; margin-bottom: 0.45rem;'>VERIFIED OFFICIAL DATA SOURCES</div>", unsafe_allow_html=True)
+_sc1, _sc2, _sc3 = st.columns(3, gap="small")
+with _sc1:
     st.markdown(
-        "All synthetic generators have been **permanently removed**. Every metric and chart in this dashboard "
-        "is backed by official Indian and international government datasets stored inside `DEV_PROJECT/data/`."
+        f"""<div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.22);
+                    border-radius: 8px; padding: 0.48rem 0.8rem; font-size: 0.8rem; color: #6ee7b7; line-height: 1.35;">
+            <strong>NITI Aayog NDAP</strong> <span style="opacity: 0.85;">(2018–2022) · {len(ndap_macro):,} macro rows</span>
+        </div>""",
+        unsafe_allow_html=True,
     )
-
-    c_audit1, c_audit2 = st.columns(2)
-    with c_audit1:
-        st.markdown("**Primary India Govt Sources (NITI Aayog NDAP + MoSPI PLFS):**")
-        st.write(plfs_files + ["ndap_labour_macro.csv"])
-    with c_audit2:
-        st.markdown("**🌐 Global Role Benchmark Sources (US BLS OEWS):**")
-        st.write(bls_files)
-
-    st.markdown("#### Live Regex Suppressed-Value & Currency Sanitizer")
-    sample_input = st.text_input("Test raw BLS/NDAP value (e.g. `$142,850*`, `#`, `~`)", value="$142,850*")
-    st.code(f"clean_govt_numeric({sample_input!r}) -> {clean_govt_numeric(sample_input)}", language="python")
-
-    if plfs_df is not None:
-        with st.expander("Preview Cleaned India MoSPI PLFS Dataset (`data/plfs_india_clean.csv`)"):
-            st.dataframe(plfs_df.head(10), use_container_width=True)
-
-    if ndap_macro is not None:
-        with st.expander("Preview Cleaned NITI Aayog NDAP Macro Dataset (`data/ndap_labour_macro.csv`)"):
-            st.dataframe(ndap_macro.tail(8), use_container_width=True)
-
-    if bls_df is not None:
-        with st.expander("Preview Cleaned Global Tech Role Dataset (`data/bls_tech_clean.csv`)"):
-            st.dataframe(bls_df.head(10), use_container_width=True)
-
+with _sc2:
+    st.markdown(
+        f"""<div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.22);
+                    border-radius: 8px; padding: 0.48rem 0.8rem; font-size: 0.8rem; color: #6ee7b7; line-height: 1.35;">
+            <strong>MoSPI PLFS</strong> <span style="opacity: 0.85;">(LFPR, UR, WPR) · {len(plfs_df):,} quarterly rows</span>
+        </div>""",
+        unsafe_allow_html=True,
+    )
+with _sc3:
+    st.markdown(
+        f"""<div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.22);
+                    border-radius: 8px; padding: 0.48rem 0.8rem; font-size: 0.8rem; color: #6ee7b7; line-height: 1.35;">
+            <strong>US BLS OEWS</strong> <span style="opacity: 0.85;">(2019, 2021, 2025) · {len(bls_df):,} tech rows</span>
+        </div>""",
+        unsafe_allow_html=True,
+    )
+st.markdown('''
+<style>
+div[data-testid="stHorizontalBlock"]:has(button[kind="primary"]),
+div[data-testid="stHorizontalBlock"]:has(button[kind="secondary"]) {
+    background: rgba(15, 23, 42, 0.55);
+    border: 1px solid rgba(148, 163, 184, 0.12);
+    border-radius: 10px;
+    padding: 4px;
+    gap: 4px !important;
+}
+div[data-testid="stHorizontalBlock"] button[kind="primary"],
+div[data-testid="stHorizontalBlock"] button[kind="secondary"] {
+    background: transparent !important;
+    border: none !important;
+    border-radius: 7px !important;
+    padding: 0.55rem 0.5rem !important;
+    font-size: 0.86rem !important;
+    letter-spacing: 0.01em !important;
+    transition: all 0.18s ease !important;
+    box-shadow: none !important;
+}
+div[data-testid="stHorizontalBlock"] button[kind="primary"] {
+    background: rgba(30, 41, 59, 0.95) !important;
+    color: #f8fafc !important;
+    font-weight: 600 !important;
+    border-bottom: 2px solid #38bdf8 !important;
+}
+div[data-testid="stHorizontalBlock"] button[kind="secondary"] {
+    color: #94a3b8 !important;
+    font-weight: 400 !important;
+}
+div[data-testid="stHorizontalBlock"] button[kind="secondary"]:hover {
+    background: rgba(30, 41, 59, 0.45) !important;
+    color: #e2e8f0 !important;
+}
+</style>
+''', unsafe_allow_html=True)
